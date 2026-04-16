@@ -1,0 +1,11 @@
+# comment this line on Mac and Windows, or to install latest torch-cuda on Linux
+#--extra-index-url https://download.pytorch.org/whl/cpu
+# use this line instead to select CUDA version on Windows and Linux (options are cu126, cu128, cu130)
+#--extra-index-url https://download.pytorch.org/whl/cu130
+torch>=2.6
+torchvision
+lightning
+# for tensorboard logging
+tensorboard
+# for test_step
+torchmetrics
