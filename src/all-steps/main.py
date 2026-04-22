@@ -42,6 +42,12 @@ class Net(L.LightningModule):
         loss = F.nll_loss(output, target)
         return {'loss': loss}
 
+    def validation_step(self, batch, batch_idx):
+        data, target = batch
+        output = self(data)
+        loss = F.nll_loss(output, target)
+        return {'val/loss': loss}
+
     def configure_optimizers(self):
         optimizer = optim.Adadelta(self.parameters(), lr=self.args.lr)
         scheduler = StepLR(optimizer, step_size=1, gamma=self.args.gamma)
@@ -55,6 +61,11 @@ class DataModule(L.LightningDataModule):
         self.train_kwargs = {
             'batch_size': args.batch_size,
             'shuffle': True,
+            'num_workers': 7,
+        }
+        self.test_kwargs = {
+            'batch_size': args.test_batch_size,
+            'num_workers': 7,
         }
 
         self.transform = transforms.Compose([
@@ -72,11 +83,15 @@ class DataModule(L.LightningDataModule):
         # called on every process in DDP
         dataset1 = datasets.MNIST(
             '../data', train=True, transform=self.transform)
-        self.train_set = dataset1
+        self.train_set, self.val_set = data.random_split(dataset1, [0.8, 0.2])
 
     def train_dataloader(self):
         train_loader = data.DataLoader(self.train_set, **self.train_kwargs)
         return train_loader
+
+    def val_dataloader(self):
+        val_loader = data.DataLoader(self.val_set, **self.test_kwargs)
+        return val_loader
 
 
 def main():
@@ -84,6 +99,8 @@ def main():
     parser = argparse.ArgumentParser(description='PyTorch Lightning MNIST Example')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
+    parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
+                        help='input batch size for testing (default: 1000)')
     parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
                         help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
@@ -93,7 +110,11 @@ def main():
     model = Net(args)
     datamodule = DataModule(args)
 
-    trainer = L.Trainer(fast_dev_run=True)
+    trainer = L.Trainer(
+        limit_train_batches=10,
+        limit_val_batches=0.5,
+        enable_model_summary=False,
+    )
     trainer.fit(model=model, datamodule=datamodule)
 
 
