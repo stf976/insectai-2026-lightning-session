@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
+from torch.utils import data
+from torchvision import datasets, transforms
 import lightning as L
 
 
@@ -46,9 +48,42 @@ class Net(L.LightningModule):
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
 
+class DataModule(L.LightningDataModule):
+    def __init__(self, args):
+        super().__init__()
+
+        self.train_kwargs = {
+            'batch_size': args.batch_size,
+            'shuffle': True,
+        }
+
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.1307,), (0.3081,))
+        ])
+
+    def prepare_data(self):
+        # download, IO, etc. Useful with shared filesystems
+        # only called on 1 GPU/TPU in distributed
+        datasets.MNIST('../data', download=True)
+
+    def setup(self, stage):
+        # make assignments here (val/train/test split)
+        # called on every process in DDP
+        dataset1 = datasets.MNIST(
+            '../data', train=True, transform=self.transform)
+        self.train_set = dataset1
+
+    def train_dataloader(self):
+        train_loader = data.DataLoader(self.train_set, **self.train_kwargs)
+        return train_loader
+
+
 def main():
     # Training settings
     parser = argparse.ArgumentParser(description='PyTorch Lightning MNIST Example')
+    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
+                        help='input batch size for training (default: 64)')
     parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
                         help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
@@ -56,9 +91,10 @@ def main():
     args = parser.parse_args()
 
     model = Net(args)
+    datamodule = DataModule(args)
 
-    trainer = L.Trainer()
-    trainer.fit(model=model)
+    trainer = L.Trainer(fast_dev_run=True)
+    trainer.fit(model=model, datamodule=datamodule)
 
 
 if __name__ == '__main__':
