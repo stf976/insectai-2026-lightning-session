@@ -8,6 +8,7 @@ from torch.optim.lr_scheduler import StepLR
 from torch.utils import data
 from torchvision import datasets, transforms
 import torchvision
+import torchmetrics
 import lightning as L
 from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
@@ -24,6 +25,11 @@ class Net(L.LightningModule):
         self.fc2 = nn.Linear(128, 10)
 
         self.args = args
+
+        self.val_acc = torchmetrics.Accuracy(
+            task='multiclass', num_classes=10)
+        self.test_acc = torchmetrics.Accuracy(
+            task='multiclass', num_classes=10)
 
         self.save_hyperparameters()
 
@@ -65,8 +71,10 @@ class Net(L.LightningModule):
         output = self(data)
         loss = F.nll_loss(output, target)
 
-        self.log("val/loss", loss, on_step=False,
-            on_epoch=True, prog_bar=True, logger=True)
+        predictions = self.predict(output)
+        self.val_acc(predictions, target)
+        self.log_dict({'val/loss': loss, 'val/acc': self.val_acc},
+            on_step=False, on_epoch=True, prog_bar=True, logger=True)
 
         return {'val/loss': loss}
 
@@ -74,6 +82,22 @@ class Net(L.LightningModule):
         optimizer = optim.Adadelta(self.parameters(), lr=self.args.lr)
         scheduler = StepLR(optimizer, step_size=1, gamma=self.args.gamma)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
+
+    def test_step(self, batch, batch_idx):
+        data, target = batch
+        output = self(data)
+        loss = F.nll_loss(output, target)
+
+        predictions = self.predict(output)
+        self.test_acc(predictions, target)
+        self.log_dict({'test/loss': loss, 'test/acc': self.test_acc},
+            on_step=True, on_epoch=True, prog_bar=True, logger=True)
+
+        self.log_images(data[0:6], 'test/images', batch_idx)
+
+    def predict(self, output):
+        predictions = torch.argmax(output, dim=1)
+        return predictions
 
 
 class DataModule(L.LightningDataModule):
@@ -108,6 +132,9 @@ class DataModule(L.LightningDataModule):
         dataset1 = datasets.MNIST(
             '../data', train=True, transform=self.transform)
         self.train_set, self.val_set = data.random_split(dataset1, [0.8, 0.2])
+        dataset2 = datasets.MNIST(
+            '../data', train=False, transform=self.transform)
+        self.test_set = dataset2
 
     def train_dataloader(self):
         train_loader = data.DataLoader(self.train_set, **self.train_kwargs)
@@ -116,6 +143,10 @@ class DataModule(L.LightningDataModule):
     def val_dataloader(self):
         val_loader = data.DataLoader(self.val_set, **self.test_kwargs)
         return val_loader
+
+    def test_dataloader(self):
+        test_loader = data.DataLoader(self.test_set, **self.test_kwargs)
+        return test_loader
 
 
 def main():
@@ -146,8 +177,8 @@ def main():
         auto_insert_metric_name=False,
     )
     early_stopping_callback = EarlyStopping(
-        monitor='val/loss',
-        mode='min',
+        monitor='val/acc',
+        mode='max',
         min_delta=0.001,
         patience=10,
         verbose=True,
@@ -155,12 +186,20 @@ def main():
     trainer = L.Trainer(
         logger=tb_logger,
         callbacks=[checkpoint_callback, early_stopping_callback],
+        max_epochs=1,
         limit_train_batches=10,
         limit_val_batches=0.5,
         log_every_n_steps=1,
         enable_model_summary=False,
     )
     trainer.fit(model=model, datamodule=datamodule)
+
+    trainer.test(
+        ckpt_path='best',
+        datamodule=datamodule,
+        # only for trusted sources!
+        weights_only=False
+    )
 
 
 if __name__ == '__main__':
