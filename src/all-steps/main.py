@@ -1,3 +1,4 @@
+import os
 import argparse
 import torch
 import torch.nn as nn
@@ -6,7 +7,9 @@ import torch.optim as optim
 from torch.optim.lr_scheduler import StepLR
 from torch.utils import data
 from torchvision import datasets, transforms
+import torchvision
 import lightning as L
+from lightning.pytorch.loggers import TensorBoardLogger
 
 
 class Net(L.LightningModule):
@@ -40,12 +43,28 @@ class Net(L.LightningModule):
         data, target = batch
         output = self(data)
         loss = F.nll_loss(output, target)
+
+        self.log("train/loss", loss, on_step=True,
+            on_epoch=False, prog_bar=True, logger=True)
+
+        if batch_idx == 0:
+            self.log_images(data[0:6], 'train/images', self.global_step)
+
         return {'loss': loss}
+
+    def log_images(self, images, label, step):
+        grid = torchvision.utils.make_grid(images)
+        self.logger: TensorBoardLogger
+        self.logger.experiment.add_image(label, grid, step)
 
     def validation_step(self, batch, batch_idx):
         data, target = batch
         output = self(data)
         loss = F.nll_loss(output, target)
+
+        self.log("val/loss", loss, on_step=False,
+            on_epoch=True, prog_bar=True, logger=True)
+
         return {'val/loss': loss}
 
     def configure_optimizers(self):
@@ -110,9 +129,15 @@ def main():
     model = Net(args)
     datamodule = DataModule(args)
 
+    tb_logger = TensorBoardLogger(
+        save_dir=os.getcwd(),
+        name='lightning_logs'
+    )
     trainer = L.Trainer(
+        logger=tb_logger,
         limit_train_batches=10,
         limit_val_batches=0.5,
+        log_every_n_steps=1,
         enable_model_summary=False,
     )
     trainer.fit(model=model, datamodule=datamodule)
