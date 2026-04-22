@@ -114,6 +114,14 @@ class DataModule(L.LightningDataModule):
             'num_workers': 7,
         }
 
+        if not args.no_accel and torch.accelerator.is_available():
+            accel_kwargs = {
+                'persistent_workers': True,
+                'pin_memory': True,
+            }
+            self.train_kwargs.update(accel_kwargs)
+            self.test_kwargs.update(accel_kwargs)
+
         self.transform = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize((0.1307,), (0.3081,))
@@ -156,11 +164,23 @@ def main():
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
+    parser.add_argument('--epochs', type=int, default=14, metavar='N',
+                        help='number of epochs to train (default: 14)')
     parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
                         help='learning rate (default: 1.0)')
     parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
                         help='Learning rate step gamma (default: 0.7)')
+    parser.add_argument('--no-accel', action='store_true',
+                        help='disables accelerator')
+    parser.add_argument('--seed', type=int, default=1, metavar='S',
+                        help='random seed (default: 1)')
+    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
+                        help='how many batches to wait before logging training status')
+    parser.add_argument('--save-model', action='store_true',
+                        help='For Saving the current Model')
     args = parser.parse_args()
+
+    torch.manual_seed(args.seed)
 
     model = Net(args)
     datamodule = DataModule(args)
@@ -184,12 +204,11 @@ def main():
         verbose=True,
     )
     trainer = L.Trainer(
+        accelerator='cpu' if args.no_accel else 'auto',
         logger=tb_logger,
         callbacks=[checkpoint_callback, early_stopping_callback],
-        max_epochs=1,
-        limit_train_batches=10,
-        limit_val_batches=0.5,
-        log_every_n_steps=1,
+        max_epochs=args.epochs,
+        log_every_n_steps=args.log_interval,
         enable_model_summary=False,
     )
     trainer.fit(model=model, datamodule=datamodule)
@@ -200,6 +219,9 @@ def main():
         # only for trusted sources!
         weights_only=False
     )
+
+    if args.save_model:
+        torch.save(model.state_dict(), "mnist_cnn.pt")
 
 
 if __name__ == '__main__':
