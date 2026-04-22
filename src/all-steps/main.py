@@ -10,6 +10,7 @@ from torchvision import datasets, transforms
 import torchvision
 import lightning as L
 from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.callbacks import ModelCheckpoint, EarlyStopping
 
 
 class Net(L.LightningModule):
@@ -23,6 +24,8 @@ class Net(L.LightningModule):
         self.fc2 = nn.Linear(128, 10)
 
         self.args = args
+
+        self.save_hyperparameters()
 
     def forward(self, x):
         x = self.conv1(x)
@@ -92,6 +95,8 @@ class DataModule(L.LightningDataModule):
             transforms.Normalize((0.1307,), (0.3081,))
         ])
 
+        self.save_hyperparameters()
+
     def prepare_data(self):
         # download, IO, etc. Useful with shared filesystems
         # only called on 1 GPU/TPU in distributed
@@ -133,8 +138,23 @@ def main():
         save_dir=os.getcwd(),
         name='lightning_logs'
     )
+    checkpoint_callback = ModelCheckpoint(
+        dirpath=os.path.join(tb_logger.log_dir, 'checkpoints'),
+        monitor='val/loss',
+        mode='min',
+        filename='epoch={epoch}-step={step}-val_loss={val/loss:.4f}',
+        auto_insert_metric_name=False,
+    )
+    early_stopping_callback = EarlyStopping(
+        monitor='val/loss',
+        mode='min',
+        min_delta=0.001,
+        patience=10,
+        verbose=True,
+    )
     trainer = L.Trainer(
         logger=tb_logger,
+        callbacks=[checkpoint_callback, early_stopping_callback],
         limit_train_batches=10,
         limit_val_batches=0.5,
         log_every_n_steps=1,
