@@ -29,10 +29,18 @@ class Net(L.LightningModule):
         output = F.log_softmax(x, dim=1)
         return output
 
+    def training_step(self, batch, batch_idx):
+        data, target = batch
+        output = self(data)
+        loss = F.nll_loss(output, target)
+        return {'loss': loss}
+
 
 def main():
     model = Net()
-    print(model(torch.rand(1, 1, 28, 28)))
+
+    trainer = L.Trainer()
+    trainer.fit(model=model)
 
 
 if __name__ == '__main__':
