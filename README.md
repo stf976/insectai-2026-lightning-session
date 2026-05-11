@@ -1,5 +1,11 @@
 # PyTorch Lightning Training Session, InsectAI Meetup 2026
 
+## Update
+
+Presentation slides are now included at [docs/presentation.pdf](docs/presentation.pdf)!
+
+## Introduction
+
 This is the code repository for the PyTorch Lightning Training Session at the InsectAI Meetup in Niš, Serbia, 22–23 April 2026.
 
 Participants are encouraged to setup a Python development environment and clone this repository on their laptops in advance. Follow installation instructions to below for setup.
